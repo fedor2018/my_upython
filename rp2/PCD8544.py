@@ -1,50 +1,55 @@
 #  PCD8544.py
 
-from machine import Pin, SPI
+from machine import Pin, SPI, SoftSPI
 from array import array
 import time
 
 class PCD8544():
-    def __init__(self, rst=14, ce=13, dc=12, dout=0, din=5, clk=4):
-        self._rst = Pin(rst, Pin.OUT)  # 14
-        self._ce = Pin(ce, Pin.OUT)    # 13
-        self._ce.high()
-        self._dc = Pin(dc, Pin.OUT)    # 12
+    def __init__(self, spi_id=None, rst=None, ce=None, dc=None, din=None, clk=None):
+        self._rst = Pin(rst, Pin.OUT) if rst else None # 14
+        self._ce = Pin(ce, Pin.OUT) if ce else ce   # 13
+        if self._ce: self.ce(1)
+        self._dc = Pin(dc, Pin.OUT) if dc else dc   # 12
         self._dc.high()
         
-        self._dout = dout # 0 MISO - not connected
-        self._din = din   # 5 MOSI
-        self._clk = clk   # 4 SCLK
         self._row = 0
         self._col = 0
         self._x = 0
         self._y = 0
         self.clear()
+        if spi_id is not None:
+            self._spi = SPI(spi_id, baudrate=1000000, polarity=1, phase=0,
+                            sck=Pin(clk), mosi=Pin(din), miso=None)
+#         else:
+#             self._spi = SoftSPI(baudrate=1000000, polarity=1, phase=0,
+#                             sck=Pin(clk), mosi=Pin(din), miso=None)
 
-        self._spi = SPI(baudrate=100000, polarity=1, phase=0, sck=Pin(self._clk), mosi=Pin(self._din), miso=Pin(self._dout))
-        self._spi.init(baudrate=200000) # set the baudrate
+    def ce(self, l=0):
+        if self._ce:
+            self._ce.value(l)
 
     def command(self,c):
         b = bytearray(1)
         b[0] = c
         self._dc.low()
-        self._ce.low()
+        self.ce(0)
         self._spi.write(b)     # write 1 byte on MOSI
-        self._ce.high()
+        self.ce(1)
 
 
     def data(self, data):
         b = bytearray(1)
         b[0] = c
         self._dc.high()
-        self._ce.low()
+        self.ce(0)
         self._spi.write(b)     # write 1 byte on MOSI
-        self._ce.high()
+        self.ce(1)
         
     def reset(self):
-        self._rst.low()
-        time.sleep_ms(50)        # sleep for 50 milliseconds
-        self._rst.high()
+        if self._rst:
+            self._rst.low()
+            time.sleep_ms(50)        # sleep for 50 milliseconds
+            self._rst.high()
 
     # begin
     def begin(self):
@@ -62,9 +67,9 @@ class PCD8544():
         self.command(0x40)
         self.command(0x80)
         self._dc.high()
-        self._ce.low()
+        self.ce(0)
         self._spi.write(self._buf)
-        self._ce.high
+        self.ce(1)
         
     def p_char(self, ch):
         fp = (ord(ch)-0x20) * 5
