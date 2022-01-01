@@ -3,9 +3,16 @@ from PCD8544 import PCD8544
 import lcd_gfx
 # import network
 import bmp
-d = PCD8544()
+
+print("start")
+
+d = PCD8544(spi_id=None, dc=17, din=19, clk=18, dout=16)
+print(d._spi)
 d.reset()
 d.begin()
+while 1:
+    d.command(0xff)
+
 time.sleep(5)
 d.clear()
 d.display()

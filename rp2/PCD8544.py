@@ -5,7 +5,7 @@ from array import array
 import time
 
 class PCD8544():
-    def __init__(self, spi_id=None, rst=None, ce=None, dc=None, din=None, clk=None):
+    def __init__(self, spi_id=None, rst=None, ce=None, dc=None, din=None, clk=None, dout=None):
         self._rst = Pin(rst, Pin.OUT) if rst else None # 14
         self._ce = Pin(ce, Pin.OUT) if ce else ce   # 13
         if self._ce: self.ce(1)
@@ -19,10 +19,11 @@ class PCD8544():
         self.clear()
         if spi_id is not None:
             self._spi = SPI(spi_id, baudrate=1000000, polarity=1, phase=0,
+                            sck=Pin(clk), mosi=Pin(din), miso=Pin(dout))
+        else:
+            self._spi = SoftSPI(baudrate=1000000, polarity=1, phase=0,
                             sck=Pin(clk), mosi=Pin(din), miso=None)
-#         else:
-#             self._spi = SoftSPI(baudrate=1000000, polarity=1, phase=0,
-#                             sck=Pin(clk), mosi=Pin(din), miso=None)
+
 
     def ce(self, l=0):
         if self._ce:
