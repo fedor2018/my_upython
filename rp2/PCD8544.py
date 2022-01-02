@@ -19,8 +19,8 @@ class PCD8544():
         self._y = 0
 #         self.clear()
         if spi_id is not None:
-            self._spi = SPI(spi_id, baudrate=4000000) #, polarity=0, phase=0,
-#                             sck=Pin(clk), mosi=Pin(din), miso=Pin(dout))
+            self._spi = SPI(spi_id, baudrate=4000000, polarity=0, phase=0,
+                            sck=Pin(clk), mosi=Pin(din), miso=Pin(dout))
         else:
             self._spi = SoftSPI(baudrate=500000, polarity=0, phase=0,
                             sck=Pin(clk), mosi=Pin(din), miso=Pin(dout))

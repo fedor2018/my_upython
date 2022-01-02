@@ -6,8 +6,7 @@ import bmp
 
 print("start")
 
-
-d = PCD8544(spi_id=0, dc=17) #, din=19, clk=18, dout=16)
+d = PCD8544(spi_id=0, dc=17, din=19, clk=18, dout=16)
 print(d._spi)
 d.begin()
 
