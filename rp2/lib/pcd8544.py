@@ -1,202 +1,110 @@
-"""
-MicroPython Nokia 5110 PCD8544 84x48 LCD driver
-https://github.com/mcauser/micropython-pcd8544
+#  PCD8544.py
 
-MIT License
-Copyright (c) 2016-2018 Mike Causer
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-"""
-
-from micropython import const
+from machine import Pin, SPI, SoftSPI
+from array import array
+import utime, time
 from ustruct import pack
-from utime import sleep_us
-import framebuf
 
-# Function set 0010 0xxx
-FUNCTION_SET     = const(0x20)
-POWER_DOWN       = const(0x04)
-ADDRESSING_VERT  = const(0x02)
-EXTENDED_INSTR   = const(0x01)
-
-# Display control 0000 1x0x
-DISPLAY_BLANK    = const(0x08)
-DISPLAY_ALL      = const(0x09)
-DISPLAY_NORMAL   = const(0x0c)
-DISPLAY_INVERSE  = const(0x0d)
-
-# Temperature control 0000 01xx
-TEMP_COEFF_0     = const(0x04)
-TEMP_COEFF_1     = const(0x05)
-TEMP_COEFF_2     = const(0x06) # default
-TEMP_COEFF_3     = const(0x07)
-
-# Bias system 0001 0xxx
-BIAS_1_100       = const(0x10)
-BIAS_1_80        = const(0x11)
-BIAS_1_65        = const(0x12)
-BIAS_1_48        = const(0x13)
-BIAS_1_40        = const(0x14) # default
-BIAS_1_24        = const(0x15)
-BIAS_1_18        = const(0x16)
-BIAS_1_10        = const(0x17)
-
-# Set operation voltage
-SET_VOP          = const(0x80)
-
-# DDRAM addresses
-COL_ADDR         = const(0x80) # x pos (0~83)
-BANK_ADDR        = const(0x40) # y pos, in banks of 8 rows (0~5)
-
-# Display dimensions
-WIDTH            = const(0x54) # 84
-HEIGHT           = const(0x30) # 48
-
-class PCD8544:
-    def __init__(self, spi, cs, dc, rst=None):
-        self.spi    = spi
-        self.cs     = cs   # chip enable, active LOW
-        self.dc     = dc   # data HIGH, command LOW
-        self.rst    = rst  # reset, active LOW
-
-        self.height = HEIGHT  # For Writer class
-        self.width = WIDTH
-
-        self.cs.init(self.cs.OUT, value=1)
-        self.dc.init(self.dc.OUT, value=0)
-
-        if self.rst:
-            self.rst.init(self.rst.OUT, value=1)
-        self.reset()
-        self.init()
-
-    def init(self, horizontal=True, contrast=0x3f, bias=BIAS_1_40, temp=TEMP_COEFF_2):
-        # power up, horizontal addressing, basic instruction set
-        self.fn = FUNCTION_SET
-        self.addressing(horizontal)
-        self.contrast(contrast, bias, temp)
-        self.cmd(DISPLAY_NORMAL)
-        self.clear()
-
-    def reset(self):
-        # issue reset impulse to reset the display
-        # you need to call power_on() or init() to resume
-        self.rst(1)
-        sleep_us(100)
-        self.rst(0)
-        sleep_us(100) # reset impulse has to be >100 ns and <100 ms
-        self.rst(1)
-        sleep_us(100)
-
-    def power_on(self):
-        self.cs(1)
-        self.fn &= ~POWER_DOWN
-        self.cmd(self.fn)
-
-    def power_off(self):
-        self.fn |= POWER_DOWN
-        self.cmd(self.fn)
-
-    def contrast(self, contrast=0x3f, bias=BIAS_1_40, temp=TEMP_COEFF_2):
-        for cmd in (
-            # extended instruction set is required to set temp, bias and vop
-            self.fn | EXTENDED_INSTR,
-            # set temperature coefficient
-            temp,
-            # set bias system (n=3 recommended mux rate 1:40/1:34)
-            bias,
-            # set contrast with operating voltage (0x00~0x7f)
-            # 0x00 = 3.00V, 0x3f = 6.84V, 0x7f = 10.68V
-            # starting at 3.06V, each bit increments voltage by 0.06V at room temperature
-            SET_VOP | contrast,
-            # revert to basic instruction set
-            self.fn & ~EXTENDED_INSTR):
-            self.cmd(cmd)
-
-    def invert(self, invert):
-        self.cmd(DISPLAY_INVERSE if invert else DISPLAY_NORMAL)
-
-    def clear(self):
-        # clear DDRAM, reset x,y position to 0,0
-        self.data([0] * (HEIGHT * WIDTH // 8))
-        self.position(0, 0)
-
-    def addressing(self, horizontal=True):
-        # vertical or horizontal addressing
-        if horizontal:
-            self.fn &= ~ADDRESSING_VERT
+class PCD8544():
+    def __init__(self, spi_id=None, rst=None, ce=None, dc=None, din=None, clk=None, dout=None):
+        self._rst = Pin(rst, Pin.OUT) if rst else None # 14
+        self._ce = Pin(ce, Pin.OUT) if ce else ce   # 13
+        if self._ce: self.ce(1)
+        self._dc = Pin(dc, Pin.OUT) if dc else dc   # 12
+        self._dc.high()
+        
+        self._row = 0
+        self._col = 0
+        self._x = 0
+        self._y = 0
+#         self.clear()
+        if spi_id is not None:
+            self._spi = SPI(spi_id, baudrate=4000000, polarity=0, phase=0,
+                            sck=Pin(clk), mosi=Pin(din), miso=Pin(dout))
         else:
-            self.fn |= ADDRESSING_VERT
-        self.cmd(self.fn)
+            self._spi = SoftSPI(baudrate=500000, polarity=0, phase=0,
+                            sck=Pin(clk), mosi=Pin(din), miso=Pin(dout))
 
-    def position(self, x, y):
-        # set cursor to column x (0~83), bank y (0~5)
-        self.cmd(COL_ADDR | x)  # set x pos (0~83)
-        self.cmd(BANK_ADDR | y) # set y pos (0~5)
+    def ce(self, l=0):
+        if self._ce:
+            self._ce.value(l)
 
-    def cmd(self, command):
-        self.dc(0)
-        self.cs(0)
-        self.spi.write(bytearray([command]))
-        self.cs(1)
+    def command(self,c, ext=0):
+        b = bytearray(2)
+        b[0] = 0x20
+        if ext:
+            b[0] += 1
+        b[1] = c
+        self._dc.low()
+        self.ce(0)
+#         self.spi.write(bytearray([c]))
+#         print(['{:x}'.format(item) for item in b])
+#             "CMD: %x%x" % b[0], b[1])
+        self._spi.write(b)
+        self.ce(1)
 
     def data(self, data):
-        self.dc(1)
-        self.cs(0)
-        self.spi.write(pack('B'*len(data), *data))
-        self.cs(1)
+#         t0=utime.ticks_add(utime.ticks_us(),100)
+        self._dc.high()
+        self.ce(0)
+        self._spi.write(data)
+#         print("DATA: {}".format(data))
+        self.ce(1)
+#         print("delay: %dus" % (utime.ticks_diff(utime.ticks_us(),t0)))
+        
+    def reset(self):
+        if self._rst:
+            self._rst.low()
+            time.sleep_ms(50)        # sleep for 50 milliseconds
+            self._rst.high()
 
+    # begin
+    def begin(self):
+        self.reset()
+        self.command(0xc) #normal
+        self.command(0x13, 1) #bias
+        self.command(0x4, 1) #temp
+        self.command(128+70, 1) #contrast
+#         self.command()
+        
+        self.clear()
+        self.display()
 
-class PCD8544_FRAMEBUF(PCD8544):
-    def __init__(self, spi, cs, dc, rst=None):
-        super().__init__(spi, cs, dc, rst)
-        self.buf = bytearray((HEIGHT // 8) * WIDTH)
-        self.fbuf = framebuf.FrameBuffer(self.buf, WIDTH, HEIGHT, framebuf.MONO_VLSB)
+    # display
+    def display(self):
+        self.command(0x40) #y=0
+        self.command(0x80) #x=0
+        self.data(self._buf)
+        
+    def p_char(self, ch):
+        fp = (ord(ch)-0x20) * 5
+        char_buf = array('b',[0,0,0,0,0])
+        f = open('font5x7.fnt','rb')
+        f.seek(fp)
+        char_buf = f.read(5)
+        bp = 84*self._row + 6*self._col
+        for x in range (0,5):
+            self._buf[bp+x] = char_buf[x]
+            self._buf[bp+5] = 0 # put in inter char space
+        self._col += 1
+        if (self._col>13):
+            self._col = 0
+            self._row += 1
+            if (self._row>5):
+                self._row = 0
 
-    def fill(self, col):
-        self.fbuf.fill(col)
+    def p_string(self, str):
+        for ch in (str):
+            self.p_char(ch)
 
-    def pixel(self, x, y, col):
-        self.fbuf.pixel(x, y, col)
-
-    def scroll(self, dx, dy):
-        self.fbuf.scroll(dx, dy)
-        # software scroll
-
-    def text(self, string, x, y, col):
-        self.fbuf.text(string, x, y, col)
-
-    def line(self, x1, y1, x2, y2, col):
-        self.fbuf.line(x1, y1, x2, y2, col)
-
-    def hline(self, x, y, w, col):
-        self.fbuf.hline(x, y, w, col)
-
-    def vline(self, x, y, h, col):
-        self.fbuf.vline(x, y, h, col)
-
-    def rect(self, x, y, w, h, col):
-        self.fbuf.rect(x, y, w, h, col)
-
-    def fill_rect(self, x, y, w, h, col):
-        self.fbuf.fill_rect(x, y, w, h, col)
-
-    def show(self):
-        self.data(self.buf)
-
+    def clear(self):
+        self._buf=bytearray(84 * int(48 / 8))
+        self._row = 0
+        self._col = 0
+                
+    def pixel(self,x,y,fill):
+        r = int(y/8)
+        i = r * 84 + x
+        b = y % 8
+        self._buf[i] = self._buf[i] | ( 1 << b )
+        
