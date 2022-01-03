@@ -18,7 +18,10 @@ class NTC():
         Vi--=NTC=--Vo--=R=--GND
         r=(Vi/Vo)*R-R
         """
-        return (self._v/self.in_volt())*self._r-self._r
+        try:
+            return (self._v/self.in_volt())*self._r-self._r
+        except:
+            return -1
 
     def r_DN(self):
         """
@@ -26,13 +29,20 @@ class NTC():
         Vi--=R=--Vo--=NTC=--GND
                 
         """
-        return self._r / (65535/self._adc.read_u16() - 1)
+        try:
+            return (self._v/(self._v-self.in_volt()))*self._r-self._r
+        except:
+            return -1
+#        return self._r / (65535/self._adc.read_u16())# - 1)
     
     def in_volt(self):
         return self._adc.read_u16()*(self._vref/65535)
          
     def to_temp(self, r):
-        steinhart = log(r / self._r0) / self._beta # log(R/Ro) / beta
-        steinhart += 1.0 / (self._t0 + 273.15)          # log(R/Ro) / beta + 1/To
-        steinhart = (1.0 / steinhart) - 273.15          # Invert, convert to C
-        return steinhart
+        try:
+            steinhart = log(r / self._r0) / self._beta # log(R/Ro) / beta
+            steinhart += 1.0 / (self._t0 + 273.15)          # log(R/Ro) / beta + 1/To
+            steinhart = (1.0 / steinhart) - 273.15          # Invert, convert to C
+            return steinhart
+        except:
+            return 999999
