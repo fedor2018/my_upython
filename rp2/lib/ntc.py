@@ -45,4 +45,4 @@ class NTC():
             steinhart = (1.0 / steinhart) - 273.15          # Invert, convert to C
             return steinhart
         except:
-            return 999999
+            return 999
