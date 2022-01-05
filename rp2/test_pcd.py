@@ -30,8 +30,13 @@ time.sleep(1)
 d.clear()
 bmp.bmp('icon.bmp',d)
 d.display()
-# time.sleep(5)
+time.sleep(1)
 
+d.LClear()
+d.LPrint("Hello World")
+d.LSetY(2)
+d.LSetX(25)
+d.LPrint("More Text!")
 
 
 
