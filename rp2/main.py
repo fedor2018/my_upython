@@ -22,18 +22,19 @@ key_menu=Pin(13, Pin.IN, Pin.PULL_UP)
 key_menu.irq(debounce, IRQ_RISING_FALLING)
 # """
 
-ntc0=NTC(adc=ADC(Pin(26)), R=3000, Ro=47000, beta=3740, V=3.3)
-ntc1=NTC(adc=ADC(Pin(27)), R=3000, Ro=47000, beta=3740, V=3.3)
+ntc0=NTC(adc=ADC(Pin(26)), R=2960, Ro=47000, beta=3740, V=2.5, Vref=2.5)
+ntc1=NTC(adc=ADC(Pin(27)), R=2960, Ro=47000, beta=3740, V=2.5, Vref=2.5)
+adc=ADC(Pin(29))
 
 d = PCD8544(spi_id=0, dc=17, din=19, clk=18, dout=16)
 print(d._spi)
-# d.begin()
+d.begin()
 # 
 # d.p_string("Start ")
 # d.display()
 # time.sleep(1)
-d.init()
-d.LClear()
+# d.init()
+# d.LClear()
 dot=""
 while 1:
     d.LClear()
@@ -61,8 +62,8 @@ while 1:
     d.LPrint(dot)
 #    d.display()
     d.setxy(3,3)
-    d.LPrint("*" if r.value else ".")
-
+    d.LPrint("*" if r.value() else ". ")
+    d.LPrint(" {}".format(adc.read_u16()))
     led.value( 0 if led.value() else 1)
 #     print("%d %d" % (r.value(), key_menu.value()))
     time.sleep(1)
