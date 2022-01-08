@@ -21,12 +21,13 @@ def debounce(pin):
 key_menu=Pin(13, Pin.IN, Pin.PULL_UP)
 key_menu.irq(debounce, IRQ_RISING_FALLING)
 # """
-
-ntc0=NTC(adc=ADC(Pin(26)), R=2960, Ro=47000, beta=3740, V=2.5, Vref=2.5)
-ntc1=NTC(adc=ADC(Pin(27)), R=2960, Ro=47000, beta=3740, V=2.5, Vref=2.5)
+VREF=2.5
+ntc0=NTC(adc=ADC(Pin(26)), R=2960, Ro=47000, beta=3740, V=VREF, Vref=VREF)
+ntc1=NTC(adc=ADC(Pin(27)), R=2960, Ro=47000, beta=3740, V=VREF, Vref=VREF)
+ntc2=NTC(adc=ADC(Pin(28)), R=9860, Ro=100000, beta=3740, V=VREF, Vref=VREF)
 adc=ADC(Pin(29))
 
-d = PCD8544(spi_id=0, dc=17, din=19, clk=18, dout=16)
+d = PCD8544(spi_id=0, dc=17, din=19, clk=18, dout=16, rst=20)
 print(d._spi)
 d.begin()
 # 
@@ -44,7 +45,7 @@ while 1:
     d.LPrint ("{:.3f}V ".format(ntc1.in_volt()))
 
     r0=ntc0.r_DN()
-    d.setxy(0,)
+    d.setxy(0,1)
     d.LPrint("{:.2f}K".format(r0/1000)) 
     r1=ntc1.r_DN()
     d.setxy(7,1)
@@ -56,6 +57,11 @@ while 1:
     d.LPrint("{:.1f}C".format(ntc1.to_temp(ntc1.r_DN())))
 
     d.setxy(0,4)
+    d.LPrint("{:3.1f}C".format(ntc2.to_temp(ntc2.r_DN())))
+    r2=ntc2.r_DN()
+    d.LPrint(" {:.2f}K".format(r2/1000))
+
+    d.setxy(0,5)
     if len(dot)>=14:
         dot=""
     dot += "."
@@ -63,7 +69,7 @@ while 1:
 #    d.display()
     d.setxy(3,3)
     d.LPrint("*" if r.value() else ". ")
-    d.LPrint(" {}".format(adc.read_u16()))
+#     d.LPrint(" {}".format(adc.read_u16()))
     led.value( 0 if led.value() else 1)
 #     print("%d %d" % (r.value(), key_menu.value()))
     time.sleep(1)
